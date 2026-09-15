@@ -58,6 +58,26 @@ def test_alpha_beta_identity_when_strategy_equals_benchmark():
     assert alpha == pytest.approx(0.0, abs=1e-6)
 
 
+def test_alpha_beta_handles_mixed_timezone_inputs():
+    """Regression test: live data from yfinance is tz-aware (e.g. Asia/Kolkata
+    for .NS tickers), while the synthetic benchmark fallback is tz-naive.
+    Comparing/concatenating them must not raise, no matter which side is
+    tz-aware. This previously crashed with:
+    'TypeError: Cannot compare tz-naive and tz-aware timestamps'."""
+    idx_aware = pd.bdate_range("2020-01-01", periods=300, tz="Asia/Kolkata")
+    idx_naive = pd.bdate_range("2020-01-01", periods=300)  # no tz
+
+    strat = pd.Series(np.random.default_rng(2).normal(0.0004, 0.01, 300), index=idx_aware)
+    bench = pd.Series(np.random.default_rng(3).normal(0.0003, 0.01, 300), index=idx_naive)
+
+    # data_loader strips tz at ingestion, so by the time anything reaches
+    # alpha_beta both sides should already be tz-naive. Simulate that here.
+    strat.index = strat.index.tz_localize(None)
+
+    alpha, beta = alpha_beta(strat, bench)
+    assert not np.isnan(beta)
+
+
 def test_calmar_ratio_sign_matches_cagr():
     # A monotonically rising equity curve has ~0 drawdown, so Calmar
     # (CAGR / |MDD|) is either nan (division by exactly zero) or a huge
