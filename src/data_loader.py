@@ -74,6 +74,16 @@ def _try_yfinance(tickers: list[str], cfg: LoaderConfig) -> dict[str, pd.DataFra
                 hist["adj_close"] = hist["adj close"]
             else:
                 hist["adj_close"] = hist["close"]
+            # yfinance returns tz-aware timestamps (e.g. Asia/Kolkata for .NS
+            # tickers, America/New_York for US tickers). The synthetic
+            # fallback and every downstream module assume tz-naive dates, so
+            # strip tz info here -- once, at the ingestion boundary -- rather
+            # than risk a tz-naive/tz-aware mismatch anywhere the data is
+            # later compared, joined, or concatenated (e.g. asset vs.
+            # benchmark in alpha/beta calculations).
+            if hist.index.tz is not None:
+                hist.index = hist.index.tz_localize(None)
+            hist.index.name = "date"
             out[t] = hist[["open", "high", "low", "close", "adj_close", "volume"]]
         return out
     except Exception:
